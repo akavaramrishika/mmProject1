@@ -8,13 +8,29 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-const API_URL = "http://127.0.0.1:5000/upload"; // 🔥 Replace after deployment
+/* 🔥 YOUR RENDER BACKEND */
+const API_URL = "https://mmproject1.onrender.com";
 
-const OrganicEdge = ({ sourceX, sourceY, targetX, targetY, style = {} }) => {
+/* ================= ORGANIC EDGE ================= */
+const OrganicEdge = ({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  style = {},
+}) => {
+  const curvature = 0.35;
+
+  const c1x = sourceX + (targetX - sourceX) * curvature;
+  const c1y = sourceY;
+
+  const c2x = targetX - (targetX - sourceX) * curvature;
+  const c2y = targetY;
+
   const path = `
     M ${sourceX},${sourceY}
-    C ${sourceX + 220},${sourceY}
-      ${targetX - 220},${targetY}
+    C ${c1x},${c1y}
+      ${c2x},${c2y}
       ${targetX},${targetY}
   `;
 
@@ -33,156 +49,109 @@ const OrganicEdge = ({ sourceX, sourceY, targetX, targetY, style = {} }) => {
 function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [mindmapData, setMindmapData] = useState({});
-  const [expanded, setExpanded] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const centerX = 1100;
-  const centerY = 700;
-  const sectionOffsetX = 550;
-  const childOffsetX = 450;
-  const childSpacing = 130;
+  const centerX = 800;
+  const centerY = 600;
+  const radius = 450;
 
-  const colors = [
-    "#FF6B6B",
-    "#6C5CE7",
-    "#00B894",
-    "#FDCB6E",
-    "#0984E3",
-    "#E84393",
-  ];
+  /* ================= BUILD RADIAL LAYOUT ================= */
+  const buildLayout = (data) => {
+    const newNodes = [];
+    const newEdges = [];
 
-  const buildLayout = (data, expandedSections) => {
-    let newNodes = [];
-    let newEdges = [];
-
-    const sections = Object.keys(data);
-    const mid = Math.ceil(sections.length / 2);
-    const leftSections = sections.slice(0, mid);
-    const rightSections = sections.slice(mid);
-
+    // Root
     newNodes.push({
       id: "root",
       data: { label: "MindMapify" },
       position: { x: centerX, y: centerY },
       draggable: false,
       style: {
-        width: 240,
-        height: 240,
+        width: 180,
+        height: 180,
         borderRadius: "50%",
-        background: "linear-gradient(135deg,#6C5CE7,#00B894)",
-        color: "white",
-        border: "8px solid white",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontWeight: "bold",
-        fontSize: "26px",
+        fontSize: 18,
+        border: "4px solid #000",
+        background: "#ffffff",
       },
     });
 
-    const placeSide = (sectionList, isLeft) => {
-      const sectionHeights = sectionList.map((section) => {
-        const childCount = (data[section] || []).length;
-        return Math.max(260, childCount * childSpacing + 180);
+    const sections = Object.keys(data);
+    const angleStep = (2 * Math.PI) / sections.length;
+
+    sections.forEach((section, i) => {
+      const angle = i * angleStep;
+
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+
+      const sectionId = `section-${i}`;
+
+      newNodes.push({
+        id: sectionId,
+        data: { label: section },
+        position: { x, y },
+        draggable: false,
+        style: {
+          padding: "12px 22px",
+          borderRadius: 25,
+          border: "3px solid #4f46e5",
+          background: "#eef2ff",
+          fontWeight: "bold",
+        },
       });
 
-      const totalHeight = sectionHeights.reduce((a, b) => a + b, 0);
-      let currentY = centerY - totalHeight / 2;
+      newEdges.push({
+        id: `edge-root-${i}`,
+        source: "root",
+        target: sectionId,
+        type: "organic",
+        style: { stroke: "#4f46e5" },
+      });
 
-      sectionList.forEach((section, index) => {
-        const blockHeight = sectionHeights[index];
-        const blockStartY = currentY;
-        const sectionY = blockStartY + blockHeight / 2;
+      // CHILDREN
+      const children = data[section];
+      const childSpacing = 140;
 
-        const sectionX = isLeft
-          ? centerX - sectionOffsetX
-          : centerX + sectionOffsetX;
+      children.forEach((child, j) => {
+        const childX = x + 320 * Math.cos(angle);
+        const childY =
+          y + (j - (children.length - 1) / 2) * childSpacing;
 
-        const id = `${isLeft ? "L" : "R"}-section-${index}`;
-        const color = colors[index % colors.length];
+        const childId = `child-${i}-${j}`;
 
         newNodes.push({
-          id,
-          data: { label: section },
-          position: { x: sectionX, y: sectionY },
+          id: childId,
+          data: { label: child },
+          position: { x: childX, y: childY },
           draggable: false,
           style: {
-            background: color,
-            color: "white",
-            padding: "18px 35px",
-            borderRadius: "40px",
-            minWidth: 280,
-            fontWeight: "600",
+            padding: "10px 18px",
+            borderRadius: 20,
+            border: "2px solid #6366f1",
+            background: "#ffffff",
           },
         });
 
         newEdges.push({
-          id: `e-root-${id}`,
-          source: "root",
-          target: id,
+          id: `edge-${sectionId}-${childId}`,
+          source: sectionId,
+          target: childId,
           type: "organic",
-          style: { stroke: color },
+          style: { stroke: "#6366f1" },
         });
-
-        if (expandedSections.includes(id)) {
-          const children = data[section] || [];
-
-          children.slice(0, 6).forEach((child, i) => {
-            const childY = blockStartY + 100 + i * childSpacing;
-            const childX = isLeft
-              ? sectionX - childOffsetX
-              : sectionX + childOffsetX;
-
-            const childId = `${id}-child-${i}`;
-
-            newNodes.push({
-              id: childId,
-              data: { label: child },
-              position: { x: childX, y: childY },
-              draggable: false,
-              style: {
-                background: "#fff",
-                padding: "16px 30px",
-                borderRadius: "30px",
-                minWidth: 340,
-                border: `3px solid ${color}`,
-              },
-            });
-
-            newEdges.push({
-              id: `e-${id}-${childId}`,
-              source: id,
-              target: childId,
-              type: "organic",
-              style: { stroke: color },
-            });
-          });
-        }
-
-        currentY += blockHeight;
       });
-    };
-
-    placeSide(leftSections, true);
-    placeSide(rightSections, false);
+    });
 
     setNodes(newNodes);
     setEdges(newEdges);
   };
 
-  const onNodeClick = (event, node) => {
-    if (!node.id.includes("section")) return;
-    let updated = [...expanded];
-    if (expanded.includes(node.id)) {
-      updated = updated.filter((id) => id !== node.id);
-    } else {
-      updated.push(node.id);
-    }
-    setExpanded(updated);
-    buildLayout(mindmapData, updated);
-  };
-
+  /* ================= FILE UPLOAD ================= */
   const handleUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -192,26 +161,35 @@ function App() {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      body: formData,
-    });
+    try {
+      const response = await fetch(`${API_URL}/upload`, {
+        method: "POST",
+        body: formData,
+      });
 
-    const result = await response.json();
+      const result = await response.json();
+
+      if (result.Mindmap) {
+        buildLayout(result.Mindmap);
+      } else {
+        alert("Mindmap generation failed.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Backend connection failed.");
+    }
+
     setLoading(false);
-
-    if (!result || !result.Mindmap) return;
-
-    setMindmapData(result.Mindmap);
-    setExpanded([]);
-    buildLayout(result.Mindmap, []);
   };
 
   return (
-    <div style={{ height: "100vh", background: "#f4f6f8" }}>
-      <div style={{ padding: "25px", textAlign: "center" }}>
+    <div style={{ height: "100vh", background: "#f3f4f6" }}>
+      <div style={{ padding: 30, textAlign: "center" }}>
         <h1>🌈 MindMapify</h1>
+        <p>Upload PDF → Generate Smart Mindmap</p>
+
         <input type="file" accept=".pdf" onChange={handleUpload} />
+
         {loading && <p>Generating...</p>}
       </div>
 
@@ -221,11 +199,10 @@ function App() {
         edgeTypes={{ organic: OrganicEdge }}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
         fitView
       >
         <Controls />
-        <Background color="#ddd" gap={40} />
+        <Background gap={25} />
       </ReactFlow>
     </div>
   );
